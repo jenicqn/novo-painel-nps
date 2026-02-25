@@ -1,49 +1,57 @@
 import { createContext, useContext, useEffect, useState } from "react"
 import { supabase } from "../lib/supabase"
+import { useAuth } from "./AuthContext"
 
 const CompanyContext = createContext(null)
 
 export function CompanyProvider({ children }) {
+  const { user } = useAuth()
   const [company, setCompany] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
 
   useEffect(() => {
+    if (!user) return
+
     async function loadCompany() {
-      try {
-        const hostname = window.location.hostname
+      setLoading(true)
 
-        const { data, error } = await supabase
-          .from("companies")
-          .select("*")
-          .eq("domain", hostname)
-          .single()
+      // Buscar company_id do usuário
+      const { data: userData, error: userError } = await supabase
+        .from("users")
+        .select("company_id")
+        .eq("id", user.id)
+        .single()
 
-        if (error) throw error
-
-        setCompany(data)
-      } catch (err) {
-        setError("Empresa não encontrada para este domínio.")
-      } finally {
+      if (userError) {
+        console.error(userError)
         setLoading(false)
+        return
       }
+
+      // Buscar empresa pelo id
+      const { data: companyData, error: companyError } = await supabase
+        .from("companies")
+        .select("*")
+        .eq("id", userData.company_id)
+        .single()
+
+      if (companyError) {
+        console.error(companyError)
+        setLoading(false)
+        return
+      }
+
+      setCompany(companyData)
+      setLoading(false)
     }
 
     loadCompany()
-  }, [])
+  }, [user])
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen text-gray-400">
+      <div className="h-screen flex items-center justify-center">
         Carregando empresa...
-      </div>
-    )
-  }
-
-  if (error || !company) {
-    return (
-      <div className="flex items-center justify-center h-screen text-red-400">
-        {error || "Empresa não encontrada."}
       </div>
     )
   }
@@ -56,11 +64,5 @@ export function CompanyProvider({ children }) {
 }
 
 export function useCompany() {
-  const context = useContext(CompanyContext)
-
-  if (!context) {
-    throw new Error("useCompany must be used within CompanyProvider")
-  }
-
-  return context
+  return useContext(CompanyContext)
 }
